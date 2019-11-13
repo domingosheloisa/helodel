@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/points_by_voronoi" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>

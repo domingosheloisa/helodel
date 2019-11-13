@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/polygons_by_subsector" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>

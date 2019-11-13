@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/extract_subsector" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>
