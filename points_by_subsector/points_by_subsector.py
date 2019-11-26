@@ -38,6 +38,22 @@ from .points_by_subsector_dialog import PointsBySubsectorDialog
 import os.path
 
 
+import csv
+from dbfread import DBF
+
+def dbf_to_csv(dbf_table):#Input a dbf, output a csv, same name, same path, except extension
+    csv_fn = "%s"%dbf_table[:-4]+ ".csv" #Set the csv file name
+    #table = DBF(dbf_table_pth)# table variable is a DBF object
+    with open(csv_fn, 'w', newline = '') as f:# create a csv file, fill it with dbf content
+        writer = csv.writer(f)
+        writer.writerow(dbf.structure(dbf_table[0:-4]+'.dbf'))# write the column name
+        tabela_nova = dbf.Table("%s"%dbf_table)
+        tabela_nova.open(mode=dbf.READ_WRITE)
+        for record in tabela_nova:# write the rows
+            writer.writerow(list(record))
+    return csv_fn# return the csv name
+
+
 class PointsBySubsector:
     """QGIS Plugin Implementation."""
 
@@ -175,7 +191,7 @@ class PointsBySubsector:
 
         # will be set False in run()
         self.first_start = True
-        
+
         self.actionRun = QAction(QIcon("/home/gedop/.local/share/QGIS/QGIS3/profiles/default/python/plugins/helonoi/icon.png"),"Points by Subsector", self.iface.mainWindow())
         self.iface.addPluginToVectorMenu("&HeloDel", self.actionRun)
         self.actionRun.triggered.connect(self.run)
@@ -187,15 +203,15 @@ class PointsBySubsector:
                 self.tr(u'&Points by Subsector'),
                 action)
             self.iface.removeToolBarIcon(action)
-    
+
     def select_dmc_files(self):
         filenames, _filter = QFileDialog.getOpenFileNames(self.dlg, "Selecione os arquivos de DMCs")
         self.dlg.lineEdit_1.setText(', '.join(filenames))
-        
+
     def select_lig_files(self):
         filename, _filter = QFileDialog.getOpenFileName(self.dlg, "Selecione o arquivo de ligações")
         self.dlg.lineEdit_2.setText(filename)
-    
+
     def select_output_directory(self):
         filename = QFileDialog.getExistingDirectory(None, "Selecione o diretório de saída")
         self.dlg.lineEdit_3.setText(filename)
@@ -221,33 +237,38 @@ class PointsBySubsector:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
             arquivos_dmcs = self.dlg.lineEdit_1.text().split(', ')
-            camada_ligacoes = self.dlg.lineEdit_2.text()       
-            
+            camada_ligacoes = self.dlg.lineEdit_2.text()
+
             flag = True
-            
+
             for dmc in arquivos_dmcs:
                 arq_saida = self.dlg.lineEdit_3.text() + '/' + camada_ligacoes.split('/')[-1][0:-4] + '_' + dmc.split('/')[-1][0:-5] + ".shp"
                 processing.run("qgis:clip", {'INPUT': camada_ligacoes,'OVERLAY': dmc, 'OUTPUT': arq_saida})
-                
+
                 #Alteração da tabela
                 tabela = dbf.Table('%s'%(arq_saida[0:-4]+'.dbf'))
+
                 tabela.open(mode=dbf.READ_WRITE)
+                #try:
                 tabela.add_fields("dmc C(30)")
-                
+
                 #Pegando estrutura da tabela dbf
                 #criando dbf em branco
                 if flag:
                     flag = False
-                    table_dbf = dbf.Table('uniao'+arq_saida[0:-4], dbf.structure(arq_saida[0:-4]+'dbf'))
+                    nome = ''
+                    for n in arquivos_dmcs:
+                        nome += ('_' + n[-6])
+                    table_dbf = dbf.Table(arq_saida[0:-5]+'uniao'+nome+'.dbf', dbf.structure(arq_saida[0:-4]+'.dbf'))
                     table_dbf.open(mode=dbf.READ_WRITE)
-                    
-                    
+
                 #inserindo em cada dado
                 nome_col = arq_saida[0:-4].split("_")
                 for item in tabela:
                     dbf.write(item, dmc = nome_col[-1])
+                    #Inserindo no novo dbf e juntando
                     table_dbf.append(item)
-                
-                
+
                 iface.addVectorLayer(arq_saida, "", "ogr")
                 self.iface.messageBar().pushMessage("Success", "Output file written at " + arq_saida,level=Qgis.Success, duration=3)
+            dbf_to_csv(arq_saida[0:-5]+'uniao'+nome+'.dbf')

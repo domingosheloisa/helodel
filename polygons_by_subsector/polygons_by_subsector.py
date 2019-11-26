@@ -36,7 +36,19 @@ from .resources import *
 # Import the code for the dialog
 from .polygons_by_subsector_dialog import PolygonsBySubsectorDialog
 import os.path
+import csv
 
+def dbf_to_csv(dbf_table):#Input a dbf, output a csv, same name, same path, except extension
+    csv_fn = "%s"%dbf_table[:-4]+ ".csv" #Set the csv file name
+    #table = DBF(dbf_table_pth)# table variable is a DBF object
+    with open(csv_fn, 'w', newline = '') as f:# create a csv file, fill it with dbf content
+        writer = csv.writer(f)
+        writer.writerow(dbf.structure(dbf_table[0:-4]+'.dbf'))# write the column name
+        tabela_nova = dbf.Table("%s"%dbf_table)
+        tabela_nova.open(mode=dbf.READ_WRITE)
+        for record in tabela_nova:# write the rows
+            writer.writerow(list(record))
+    return csv_fn# return the csv name
 
 class PolygonsBySubsector:
     """QGIS Plugin Implementation."""
@@ -172,7 +184,7 @@ class PolygonsBySubsector:
             text=self.tr(u'Polygons by Subsector'),
             callback=self.run,
             parent=self.iface.mainWindow())"""
-        
+
         self.actionRun = QAction(QIcon("/home/gedop/.local/share/QGIS/QGIS3/profiles/default/python/plugins/helonoi/icon.png"),"Polygons by Subsector", self.iface.mainWindow())
         self.iface.addPluginToVectorMenu("&HeloDel", self.actionRun)
         self.actionRun.triggered.connect(self.run)
@@ -187,15 +199,15 @@ class PolygonsBySubsector:
                 self.tr(u'&Polygons by Subsector'),
                 action)
             self.iface.removeToolBarIcon(action)
-    
+
     def select_dmc_files(self):
         filenames, _filter = QFileDialog.getOpenFileNames(self.dlg, "Selecione os arquivos de DMCs")
         self.dlg.lineEdit_1.setText(', '.join(filenames))
-    
+
     def select_quad_files(self):
         filename, _filter = QFileDialog.getOpenFileName(self.dlg, "Selecione o arquivo de quadras")
         self.dlg.lineEdit_2.setText(filename)
-    
+
     def select_output_directory(self):
         filename = QFileDialog.getExistingDirectory(None, "Selecione o diretório de saída")
         self.dlg.lineEdit_3.setText(filename)
@@ -222,13 +234,16 @@ class PolygonsBySubsector:
             # substitute with your code.
             arquivos_dmcs = self.dlg.lineEdit_1.text().split(', ')
             camada_quadras = self.dlg.lineEdit_2.text()
+
+            flag = True
+
             for dmc in arquivos_dmcs:
                 output_directory = self.dlg.lineEdit_3.text()
                 arq_saida = output_directory + '/' + camada_quadras.split('/')[-1][0:-4] + '_' + dmc.split('/')[-1][0:-5] + ".shp"
                 processing.run("qgis:clip", {'INPUT': camada_quadras,'OVERLAY': dmc, 'OUTPUT': arq_saida})
                 arq_saida_pol = self.dlg.lineEdit_3.text() + '/pol_' + camada_quadras.split('/')[-1][0:-4] + '_' + dmc.split('/')[-1][0:-5] + ".shp"
                 processing.run("qgis:linestopolygons", {'INPUT': arq_saida, 'OUTPUT': arq_saida_pol})
-                
+
                 #Alteração da tabela
                 tabela = dbf.Table('%s'%(arq_saida_pol[0:-3]+'dbf'))
                 tabela.open(mode=dbf.READ_WRITE)
@@ -237,13 +252,30 @@ class PolygonsBySubsector:
                 nome_col = arq_saida_pol[0:-4].split("_")
                 for item in tabela:
                     dbf.write(item, dmc = nome_col[-1])
-                tabela.close()
-                
+                #tabela.close()
+
+                #Pegando estrutura da tabela dbf
+                #criando dbf em branco
+                if flag:
+                    flag = False
+                    nome = ''
+                    for n in arquivos_dmcs:
+                        nome += ('_' + n[-6])
+                    table_dbf = dbf.Table(arq_saida[0:-5]+'uniao'+nome+'.dbf', dbf.structure(arq_saida_pol[0:-4]+'.dbf'))
+                    table_dbf.open(mode=dbf.READ_WRITE)
+
+
+                #inserindo cada dado
+                for item in tabela:
+                    #Inserindo no novo dbf e juntando
+                    table_dbf.append(item)
+
                 iface.addVectorLayer(arq_saida_pol, "", "ogr")
                 self.iface.messageBar().pushMessage("Success", "Output file written at " + arq_saida_pol,level=Qgis.Success, duration=3)
-                
+
                 output = processing.run("qgis:splitvectorlayer", {'INPUT': arq_saida_pol, 'FIELD': "id", 'OUTPUT': output_directory})
-                output_layers = output['OUTPUT_LAYERS']
-                for layer in output_layers:
-                    iface.addVectorLayer(layer, "", "ogr")
+                #output_layers = output['OUTPUT_LAYERS']
+                #for layer in output_layers:
+                    #iface.addVectorLayer(layer, "", "ogr")
                 self.iface.messageBar().pushMessage("Success", "Output file written at " + output_directory,level=Qgis.Success, duration=3)
+            dbf_to_csv(arq_saida[0:-5]+'uniao'+nome+'.dbf')

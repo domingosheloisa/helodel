@@ -36,7 +36,19 @@ from .resources import *
 # Import the code for the dialog
 from .points_by_polygons_dialog import PointsByPolygonsDialog
 import os.path
+import csv
 
+def dbf_to_csv(dbf_table):#Input a dbf, output a csv, same name, same path, except extension
+    csv_fn = "%s"%dbf_table[:-4]+ ".csv" #Set the csv file name
+    #table = DBF(dbf_table_pth)# table variable is a DBF object
+    with open(csv_fn, 'w', newline = '') as f:# create a csv file, fill it with dbf content
+        writer = csv.writer(f)
+        writer.writerow(dbf.structure(dbf_table[0:-4]+'.dbf'))# write the column name
+        tabela_nova = dbf.Table("%s"%dbf_table)
+        tabela_nova.open(mode=dbf.READ_WRITE)
+        for record in tabela_nova:# write the rows
+            writer.writerow(list(record))
+    return csv_fn# return the csv name
 
 class PointsByPolygons:
     """QGIS Plugin Implementation."""
@@ -175,7 +187,7 @@ class PointsByPolygons:
 
         # will be set False in run()
         self.first_start = True
-        
+
         self.actionRun = QAction(QIcon("/home/gedop/.local/share/QGIS/QGIS3/profiles/default/python/plugins/helonoi/icon.png"),"Points by Polygons", self.iface.mainWindow())
         self.iface.addPluginToVectorMenu("&HeloDel", self.actionRun)
         self.actionRun.triggered.connect(self.run)
@@ -188,15 +200,15 @@ class PointsByPolygons:
                 self.tr(u'&Points by Polygons'),
                 action)
             self.iface.removeToolBarIcon(action)
-    
+
     def select_quad_files(self):
         filenames, _filter = QFileDialog.getOpenFileNames(self.dlg, "Selecione os arquivos de quadras")
         self.dlg.lineEdit_1.setText(', '.join(filenames))
-        
+
     def select_lig_files(self):
         filename, _filter = QFileDialog.getOpenFileName(self.dlg, "Selecione o arquivo de ligações")
         self.dlg.lineEdit_2.setText(filename)
-    
+
     def select_output_directory(self):
         filename = QFileDialog.getExistingDirectory(None, "Selecione o diretório de saída")
         self.dlg.lineEdit_3.setText(filename)
@@ -222,11 +234,14 @@ class PointsByPolygons:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
             arquivos_quadras = self.dlg.lineEdit_1.text().split(', ')
-            camada_ligacoes = self.dlg.lineEdit_2.text()            
+            camada_ligacoes = self.dlg.lineEdit_2.text()
+
+            flag = True
+
             for quadra in arquivos_quadras:
                 arq_saida = self.dlg.lineEdit_3.text() + '/' + camada_ligacoes.split('/')[-1][0:-4] + '_' + quadra.split('/')[-1][0:-5] + ".shp"
                 processing.run("qgis:clip", {'INPUT': camada_ligacoes,'OVERLAY': quadra, 'OUTPUT': arq_saida})
-                
+
                 #Alteração da tabela
                 tabela = dbf.Table('%s'%(arq_saida[0:-4]+'.dbf'))
                 tabela.open(mode=dbf.READ_WRITE)
@@ -235,7 +250,20 @@ class PointsByPolygons:
                 nome_col = arq_saida[0:-4].split("_")
                 for item in tabela:
                     dbf.write(item, quadra = nome_col[-1])
-                tabela.close()
-                
+
+                if flag:
+                    flag = False
+                    nome = ''
+                    for n in arquivos_quadras:
+                        nome += ('_' + n[-6])
+                    table_dbf = dbf.Table(arq_saida[0:-5]+'uniao'+nome+'.dbf', dbf.structure(arq_saida[0:-5]+'.dbf'))
+                    table_dbf.open(mode=dbf.READ_WRITE)
+
+                #inserindo cada dado
+                for item in tabela:
+                    #Inserindo no novo dbf e juntando
+                    table_dbf.append(item)
+
                 iface.addVectorLayer(arq_saida, "", "ogr")
                 self.iface.messageBar().pushMessage("Success", "Output file written at " + arq_saida,level=Qgis.Success, duration=3)
+            dbf_to_csv(arq_saida[0:-5]+'uniao'+nome+'.dbf')
